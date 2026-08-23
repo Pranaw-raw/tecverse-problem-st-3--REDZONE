@@ -1,0 +1,10 @@
+{
+  "name": "smart-resource-booking-platform",
+  "version": "1.0.0",
+  "description": "Smart Resource Booking Platform for HackArena '26",
+  "scripts": {
+    "dev:server": "npm.cmd --prefix server start",
+    "dev:client": "npm.cmd --prefix client run dev",
+    "start": "node server/index.js"
+  }
+}
