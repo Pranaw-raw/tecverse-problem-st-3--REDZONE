@@ -1,2 +1,2 @@
-# tecverse-problem-st-3--REDZONE
+# techverse-problem-st-3--REDZONE
 SOLUTION OF PROBLEM STATEMENT 3
