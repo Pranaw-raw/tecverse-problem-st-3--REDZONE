@@ -6,5 +6,10 @@
     "dev:server": "npm.cmd --prefix server start",
     "dev:client": "npm.cmd --prefix client run dev",
     "start": "node server/index.js"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.5.4",
+    "postcss": "^8.5.26",
+    "tailwindcss": "^3.4.17"
   }
 }
