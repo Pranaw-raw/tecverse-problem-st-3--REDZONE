@@ -1,13 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
-const { dbAll, dbGet, dbRun } = require('../config/database');
+const { dbAll, dbGet, dbRun, reloadDbFromDisk } = require('../config/database');
 const { authenticateToken, requireAdmin, optionalAuth } = require('../middleware/auth');
 const { suggestAlternativeSlots } = require('../services/conflictDetector');
 
 // GET /api/resources - Browse catalogue with search & filters
 router.get('/', optionalAuth, async (req, res) => {
   try {
+    await reloadDbFromDisk();
     const { search, category, location, minCapacity, status } = req.query;
 
     let query = `SELECT * FROM resources WHERE 1=1`;

@@ -4,6 +4,11 @@ const { v4: uuidv4 } = require('uuid');
 const { dbAll, dbGet, dbRun } = require('../config/database');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { checkConflict } = require('../services/conflictDetector');
+const {
+  sendBookingCreatedNotification,
+  sendBookingCancelledNotification,
+  sendCheckInNotification
+} = require('../services/notificationService');
 
 // POST /api/bookings - Create a new booking
 router.post('/', authenticateToken, async (req, res) => {
@@ -63,19 +68,6 @@ router.post('/', authenticateToken, async (req, res) => {
       ]
     );
 
-    // Confirmation notification
-    const notificationId = uuidv4();
-    await dbRun(
-      `INSERT INTO notifications (id, user_id, booking_id, title, message, type)
-       VALUES (?, ?, ?, 'Booking Confirmed!', ?, 'confirmation')`,
-      [
-        notificationId,
-        userId,
-        bookingId,
-        `Your reservation for "${resource.name}" on ${start.toLocaleDateString()} from ${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} to ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} is confirmed.`
-      ]
-    );
-
     // Audit log
     await dbRun(
       `INSERT INTO audit_logs (id, user_id, action, entity_type, entity_id, details)
@@ -97,7 +89,7 @@ router.post('/', authenticateToken, async (req, res) => {
       [bookingId]
     );
 
-    // Broadcast live WebSocket event for real-time calendar refresh across all active clients
+    // Broadcast live WebSocket event for real-time calendar refresh
     const io = req.app.get('io');
     if (io) {
       io.emit('booking_created', {
@@ -106,17 +98,15 @@ router.post('/', authenticateToken, async (req, res) => {
         startTime: start.toISOString(),
         endTime: end.toISOString()
       });
-
-      // Send to specific user room for instant notification UI refresh
-      io.to(`user_${userId}`).emit('new_notification', {
-        id: notificationId,
-        bookingId,
-        title: 'Booking Confirmed!',
-        message: `Your reservation for "${resource.name}" is confirmed.`,
-        type: 'confirmation',
-        createdAt: new Date().toISOString()
-      });
     }
+
+    // Trigger persistent DB notification, admin notification stream, and instant phone push alerts
+    sendBookingCreatedNotification({
+      booking: createdBooking,
+      user: req.user,
+      resource,
+      io
+    }).catch((err) => console.error('[Async Notification Dispatch Error]:', err));
 
     res.status(201).json({
       message: 'Booking created successfully.',
@@ -280,20 +270,6 @@ router.post('/:id/cancel', authenticateToken, async (req, res) => {
       [reason, id]
     );
 
-    // Add cancellation notification
-    await dbRun(
-      `INSERT INTO notifications (id, user_id, booking_id, title, message, type)
-       VALUES (?, ?, ?, 'Booking Cancelled', ?, 'cancellation')`,
-      [
-        uuidv4(),
-        booking.user_id,
-        id,
-        isAdmin && booking.user_id !== req.user.id
-          ? `Your booking for "${booking.resource_name}" was cancelled by an Administrator. Reason: ${reason}`
-          : `Your booking for "${booking.resource_name}" has been successfully cancelled. The time slot is now open.`
-      ]
-    );
-
     // Audit log
     await dbRun(
       `INSERT INTO audit_logs (id, user_id, action, entity_type, entity_id, details)
@@ -316,6 +292,16 @@ router.post('/:id/cancel', authenticateToken, async (req, res) => {
         status: 'cancelled'
       });
     }
+
+    // Trigger persistent cancellation notification and phone push
+    sendBookingCancelledNotification({
+      booking,
+      user: { name: booking.user_name, email: booking.user_email },
+      resource: { name: booking.resource_name },
+      cancelledBy: req.user.name,
+      reason,
+      io
+    }).catch((err) => console.error('[Async Cancellation Notification Error]:', err));
 
     res.json({
       message: 'Booking cancelled successfully. Time slot has been freed up.',
@@ -399,6 +385,13 @@ router.post('/qr-checkin', authenticateToken, async (req, res) => {
         checkedInAt: checkInTime
       });
     }
+
+    sendCheckInNotification({
+      booking,
+      user: req.user,
+      resource: { name: booking.resource_name },
+      io
+    }).catch((err) => console.error('[Async Check-In Notification Error]:', err));
 
     res.json({
       message: `Check-in successful! Welcome to ${booking.resource_name}.`,

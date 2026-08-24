@@ -46,18 +46,23 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// Login
+// Login (by Email, User ID, or Name)
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const identifier = req.body.email || req.body.userId || req.body.identifier || req.body.username;
+    const password = req.body.password;
 
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required.' });
+    if (!identifier || !password) {
+      return res.status(400).json({ error: 'User ID / Email and password are required.' });
     }
 
-    const user = await dbGet('SELECT * FROM users WHERE email = ?', [email.toLowerCase().trim()]);
+    const cleanId = identifier.trim().toLowerCase();
+    const user = await dbGet(
+      'SELECT * FROM users WHERE LOWER(email) = ? OR id = ? OR LOWER(name) = ?',
+      [cleanId, identifier.trim(), cleanId]
+    );
     if (!user) {
-      return res.status(401).json({ error: 'Invalid email or password.' });
+      return res.status(401).json({ error: 'Invalid User ID / Email or password.' });
     }
 
     const isMatch = await bcrypt.compare(password, user.password_hash);

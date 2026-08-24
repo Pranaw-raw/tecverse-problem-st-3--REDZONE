@@ -40,6 +40,15 @@ const getDb = async () => {
   return dbInstance;
 };
 
+const reloadDbFromDisk = async () => {
+  const SQL = await initSqlJs();
+  if (fs.existsSync(dbPath)) {
+    const filebuffer = fs.readFileSync(dbPath);
+    dbInstance = new SQL.Database(filebuffer);
+  }
+  return dbInstance;
+};
+
 // Promisified DB helpers
 const dbGet = async (sql, params = []) => {
   const db = await getDb();
@@ -135,11 +144,29 @@ const initDatabase = async () => {
       booking_id TEXT,
       title TEXT NOT NULL,
       message TEXT NOT NULL,
-      type TEXT NOT NULL DEFAULT 'info' CHECK(type IN ('info', 'reminder', 'confirmation', 'cancellation', 'alert')),
+      type TEXT NOT NULL DEFAULT 'info',
       is_read INTEGER NOT NULL DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS device_subscriptions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      endpoint TEXT,
+      fcm_token TEXT,
+      subscription_json TEXT,
+      device_info TEXT,
+      platform TEXT DEFAULT 'web',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS system_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS audit_logs (
@@ -154,6 +181,7 @@ const initDatabase = async () => {
 
     CREATE INDEX IF NOT EXISTS idx_bookings_resource ON bookings (resource_id, start_time, end_time, status);
     CREATE INDEX IF NOT EXISTS idx_bookings_user ON bookings (user_id, status);
+    CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications (user_id, is_read, created_at);
   `;
 
   await dbExec(schema);
@@ -162,6 +190,7 @@ const initDatabase = async () => {
 
 module.exports = {
   getDb,
+  reloadDbFromDisk,
   dbGet,
   dbAll,
   dbRun,
